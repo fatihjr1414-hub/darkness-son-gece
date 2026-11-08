@@ -9,7 +9,8 @@
 *{box-sizing:border-box}
 body{margin:0;background:#050505;color:white;font-family:Arial;overflow:hidden}
 #game{width:100vw;height:100dvh;position:relative;background:#000}
-canvas{display:block;width:100%;height:100%}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#controls,#controls button{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #menu,#ending{
  position:absolute;inset:0;z-index:5;
  background:radial-gradient(circle,#25212a,#050508 75%);
@@ -113,6 +114,7 @@ let objects=[];
 let colliders=[];
 let lastTouchX=0,lastTouchY=0;
 let scareTriggered=false,scareUntil=0,scareAudio=null;
+let apparition=null,apparitionState="idle",apparitionTime=0,apparitionStart=null;
 let ambientOsc=null,ambientGain=null,lastStepAt=0,soundOn=true;
 
 function startGame(){
@@ -165,6 +167,7 @@ function init3D(){
  createRoom();
  createFlashlight();
  createKey();
+ createApparition();
 
  window.addEventListener("resize",resize);
  window.addEventListener("keydown",e=>{keys[e.code]=true;if(e.code==="KeyE"&&!e.repeat)interact();});
@@ -184,24 +187,51 @@ function init3D(){
   }
  });
 
+ // Her parmak ayrı izlenir: sol başparmak hareket, sağ başparmak kamera.
+ let lookFingerId=null;
  renderer.domElement.addEventListener("touchstart",e=>{
-  if(e.touches[0].clientX>innerWidth*0.35){
-   lastTouchX=e.touches[0].clientX;
-   lastTouchY=e.touches[0].clientY;
+  e.preventDefault();
+  if(lookFingerId!==null)return;
+  for(const finger of e.changedTouches){
+   if(finger.clientX>innerWidth*0.35){
+    lookFingerId=finger.identifier;
+    lastTouchX=finger.clientX;
+    lastTouchY=finger.clientY;
+    break;
+   }
   }
- },{passive:true});
-
+ },{passive:false});
  renderer.domElement.addEventListener("touchmove",e=>{
-  if(e.touches[0].clientX>innerWidth*0.35){
-   let dx=e.touches[0].clientX-lastTouchX;
-   let dy=e.touches[0].clientY-lastTouchY;
+  e.preventDefault();
+  if(lookFingerId===null)return;
+  for(const finger of e.changedTouches){
+   if(finger.identifier!==lookFingerId)continue;
+   const dx=finger.clientX-lastTouchX;
+   const dy=finger.clientY-lastTouchY;
    yaw-=dx*0.005;
    pitch-=dy*0.005;
    pitch=Math.max(-1.2,Math.min(1.2,pitch));
-   lastTouchX=e.touches[0].clientX;
-   lastTouchY=e.touches[0].clientY;
+   lastTouchX=finger.clientX;
+   lastTouchY=finger.clientY;
+   break;
   }
- },{passive:true});
+ },{passive:false});
+ function releaseLookFinger(e){
+  for(const finger of e.changedTouches){
+   if(finger.identifier===lookFingerId){lookFingerId=null;break;}
+  }
+ }
+ renderer.domElement.addEventListener("touchend",releaseLookFinger,{passive:true});
+ renderer.domElement.addEventListener("touchcancel",releaseLookFinger,{passive:true});
+
+ // Butonların dokunmayı tarayıcıya kaydırma/zoom olarak iletmesini önle.
+ document.querySelectorAll("#controls button").forEach(button=>{
+  button.addEventListener("touchstart",e=>e.preventDefault(),{passive:false});
+  button.addEventListener("touchmove",e=>e.preventDefault(),{passive:false});
+  button.addEventListener("touchcancel",()=>{
+   Object.keys(touch).forEach(k=>touch[k]=false);
+  });
+ });
 
  animate();
 }
@@ -442,6 +472,68 @@ function playJumpscareScream(){
   noise.start(t);noise.stop(t+0.65);
  }catch(e){console.warn('Jumpscare ses hatası:',e);}
 }
+
+// Harici model indirmeden çalışan 3B sahne içi hayalet.
+// Bu sürüm fotoğraf dokulu bir yüz + animasyonlu 3B siluet kullanır;
+// gerçekçi, iskeletli bir GLB karakteri değildir.
+function createApparition(){
+ const group=new THREE.Group();
+ const dark=new THREE.MeshStandardMaterial({color:0x151419,roughness:1,side:THREE.DoubleSide});
+ const cloth=new THREE.MeshStandardMaterial({color:0xaaa5a0,roughness:1,side:THREE.DoubleSide,transparent:true,opacity:.9});
+ const skin=new THREE.MeshStandardMaterial({color:0x77716e,roughness:1});
+ const dress=new THREE.Mesh(new THREE.ConeGeometry(.64,2.45,12,1,true),cloth);
+ dress.position.y=1.28;group.add(dress);
+ const torso=new THREE.Mesh(new THREE.CylinderGeometry(.32,.48,1.05,10),cloth);
+ torso.position.y=2.05;group.add(torso);
+ const faceImg=document.querySelector('#scare img');
+ const tex=new THREE.TextureLoader().load(faceImg.src);
+ tex.colorSpace=THREE.SRGBColorSpace;
+ const head=new THREE.Mesh(new THREE.PlaneGeometry(.76,.91),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide,transparent:true,alphaTest:.04}));
+ head.position.set(0,2.84,.27);group.add(head);
+ const hair=new THREE.Mesh(new THREE.SphereGeometry(.48,12,10),dark);
+ hair.scale.set(1,1.24,.65);hair.position.set(0,2.89,-.03);group.add(hair);
+ // Yüzün üstüne saç düşmesin diye yüzü önde tutuyoruz.
+ const arms=[],legs=[];
+ for(const side of [-1,1]){
+  const armPivot=new THREE.Group();armPivot.position.set(side*.4,2.45,0);group.add(armPivot);
+  const arm=new THREE.Mesh(new THREE.CylinderGeometry(.105,.075,1.12,8),skin);
+  arm.position.y=-.52;arm.rotation.z=side*.14;armPivot.add(arm);arms.push(armPivot);
+  const legPivot=new THREE.Group();legPivot.position.set(side*.22,1.02,0);group.add(legPivot);
+  const leg=new THREE.Mesh(new THREE.CylinderGeometry(.14,.10,.98,8),dark);
+  leg.position.y=-.47;legPivot.add(leg);legs.push(legPivot);
+ }
+ group.position.set(0,0,-21.3);
+ group.visible=false;
+ scene.add(group);
+ apparition={group,arms,legs,head,dress};
+}
+function updateApparition(dt){
+ if(!apparition||scareTriggered)return;
+ if(apparitionState==='idle' && camera.position.z < -1.8){
+  apparitionState='running';apparitionTime=0;
+  apparition.group.visible=true;
+  apparition.group.position.set(camera.position.x,0,Math.min(camera.position.z-13,-16));
+  apparitionStart=apparition.group.position.clone();
+  document.getElementById('hint').innerText='ARKANDA BİR ŞEY VAR... KOŞ!';
+ }
+ if(apparitionState!=='running')return;
+ apparitionTime+=dt;
+ const ghost=apparition.group;
+ const toward=new THREE.Vector3(camera.position.x-ghost.position.x,0,camera.position.z-ghost.position.z);
+ const distance=toward.length();
+ toward.normalize();
+ ghost.position.addScaledVector(toward,Math.min(distance,6.7*dt+apparitionTime*.06));
+ ghost.rotation.y=Math.atan2(toward.x,toward.z);
+ const phase=apparitionTime*17;
+ apparition.arms[0].rotation.x=Math.sin(phase)*.95-.45;
+ apparition.arms[1].rotation.x=-Math.sin(phase)*.95-.45;
+ apparition.legs[0].rotation.x=-Math.sin(phase)*.85;
+ apparition.legs[1].rotation.x=Math.sin(phase)*.85;
+ ghost.position.y=Math.abs(Math.sin(phase))*.11;
+ apparition.dress.rotation.z=Math.sin(phase*.5)*.07;
+ if(distance<1.55){ghost.visible=false;apparitionState='done';triggerScare();}
+}
+
 function triggerScare(){
  if(scareTriggered)return;
  scareTriggered=true;
@@ -459,8 +551,7 @@ function animate(){
   document.getElementById('scare').classList.remove('active');
   scareUntil=0;
  }
- // İlk koridorda, anahtara varmadan önce bir defa tetiklenir.
- if(!scareTriggered && camera.position.z < -3.5)triggerScare();
+ // Jumpscare artık hayalet oyuncuya ulaştığında tetikleniyor.
 
  camera.rotation.order="YXZ";
  camera.rotation.y=yaw;
@@ -495,6 +586,8 @@ function animate(){
  if(moving && performance.now()-lastStepAt>460){
   lastStepAt=performance.now();playTone(65+Math.random()*18,0.11,0.035,'triangle');
  }
+
+ updateApparition(dt);
 
  // Işık ve hedef kameraya bağlı: yerel koordinatları değiştirmiyoruz.
 
