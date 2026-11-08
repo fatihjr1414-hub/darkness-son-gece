@@ -53,7 +53,7 @@ button:active{background:#b22}
 }
 #scare{position:absolute;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:#090000;pointer-events:none;overflow:hidden}
 #scare.active{display:flex;animation:scareFlash .16s steps(2,end) 5}
-#scare img{width:100%;height:100%;object-fit:cover;filter:contrast(1.18) brightness(.82);animation:scareLunge 1.05s ease-out both}
+#scare img{width:100%;height:100%;object-fit:cover;filter:contrast(1.18) brightness(.82);animation:scareLunge 1.45s ease-out both}
 @keyframes scareFlash{0%{background:#3d0000}50%{background:#000}}
 @keyframes scareLunge{0%{transform:scale(.4) rotate(-8deg)}55%{transform:scale(1.2) rotate(5deg)}100%{transform:scale(1.05)}}
 </style>
@@ -72,6 +72,7 @@ button:active{background:#b22}
 <div id="hud" class="hidden">
  <div id="objective">GÖREV: Malikane anahtarını bul.</div>
  <div id="hint">Etrafı araştır...</div>
+ <button id="soundToggle" onclick="toggleSound()" style="position:absolute;top:12px;right:12px;pointer-events:auto;padding:9px;font-size:12px">🔊 SES AÇIK</button>
  <div id="crosshair">+</div>
  <button id="interact" onclick="interact()">ETKİLEŞİM</button>
 
@@ -109,8 +110,10 @@ let flashlight,door,keyObject;
 let hasKey=false,doorOpen=false,playing=false;
 let yaw=0,pitch=0;
 let objects=[];
+let colliders=[];
 let lastTouchX=0,lastTouchY=0;
 let scareTriggered=false,scareUntil=0,scareAudio=null;
+let ambientOsc=null,ambientGain=null,lastStepAt=0,soundOn=true;
 
 function startGame(){
  if(!window.THREE){
@@ -125,7 +128,7 @@ function startGame(){
  init3D();
  playing=true;
  // Ses yalnızca oyuncu oyunu başlattığında hazırlanır.
- try{scareAudio=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}
+ try{scareAudio=new (window.AudioContext||window.webkitAudioContext)(); startAmbient();}catch(e){}
 
  if(!isMobile()){
   renderer.domElement.requestPointerLock?.();
@@ -203,7 +206,7 @@ function init3D(){
  animate();
 }
 
-function box(w,h,d,x,y,z,color){
+function box(w,h,d,x,y,z,color,solid=false){
  const mesh=new THREE.Mesh(
   new THREE.BoxGeometry(w,h,d),
   new THREE.MeshStandardMaterial({color:color,roughness:0.95})
@@ -213,6 +216,7 @@ function box(w,h,d,x,y,z,color){
  mesh.receiveShadow=true;
  scene.add(mesh);
  objects.push(mesh);
+ if(solid)colliders.push({x,z,halfW:w/2,halfD:d/2});
  return mesh;
 }
 
@@ -224,20 +228,20 @@ function createRoom(){
  box(18,0.3,35,0,4,-8,0x17171d);
 
  // Yan duvarlar
- box(0.4,4,35,-9,2,-8,0x27232a);
- box(0.4,4,35,9,2,-8,0x27232a);
+ box(0.4,4,35,-9,2,-8,0x27232a,true);
+ box(0.4,4,35,9,2,-8,0x27232a,true);
 
  // Arka duvar
- box(18,4,0.4,0,2,-25,0x242127);
+ box(18,4,0.4,0,2,-25,0x242127,true);
 
  // Koridorun ara duvarları
- box(0.3,4,8,-5,2,-12,0x332a2b);
- box(0.3,4,8,5,2,-12,0x332a2b);
+ box(0.3,4,8,-5,2,-12,0x332a2b,true);
+ box(0.3,4,8,5,2,-12,0x332a2b,true);
 
  // Ahşap sütunlar
  for(let z=2;z>-23;z-=5){
-  box(0.5,4,0.5,-7,2,z,0x49352b);
-  box(0.5,4,0.5,7,2,z,0x49352b);
+  box(0.5,4,0.5,-7,2,z,0x49352b,true);
+  box(0.5,4,0.5,7,2,z,0x49352b,true);
  }
 
  // Halı
@@ -255,6 +259,62 @@ function createRoom(){
   scene.add(light);
  }
  
+ // Malikânenin eski dekorları: tablolar, duvar aplikleri, halı desenleri.
+ const paintingColors=[0x302b24,0x2a3433,0x44302f,0x222b35];
+ for(let i=0;i<6;i++){
+  const z=3-i*4.5;
+  for(const side of [-1,1]){
+   const frame=box(0.12,1.45,1.2,side*8.74,2.3,z,0x765033);
+   const canvas=box(0.14,1.14,0.91,side*8.65,2.3,z,paintingColors[i%4]);
+   // Soyut, soluk bir portre silueti.
+   const face=new THREE.Mesh(new THREE.SphereGeometry(0.22,8,8),new THREE.MeshStandardMaterial({color:0x77716a,roughness:1}));
+   face.scale.set(0.2,1,0.7);face.position.set(side*8.54,2.44,z);scene.add(face);
+  }
+ }
+ // Koridorun iki tarafında eski pirinç aplikler.
+ for(let z=3;z>-24;z-=7){
+  for(const side of [-1,1]){
+   box(0.32,0.42,0.35,side*8.55,2.95,z,0x66523a);
+   const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.13,10,8),new THREE.MeshBasicMaterial({color:0xff9b49}));
+   bulb.position.set(side*8.36,3.15,z);scene.add(bulb);
+   const glow=new THREE.PointLight(0xff7c39,0.38,4);glow.position.copy(bulb.position);scene.add(glow);
+  }
+ }
+ // Yıpranmış halının işlemeleri.
+ for(let z=1;z>-21;z-=2){
+  box(3.6,0.008,0.06,0,0.053,z,0x6e483b);
+  box(0.055,0.008,1.6,-1.72,0.055,z-0.8,0x654638);
+  box(0.055,0.008,1.6,1.72,0.055,z-0.8,0x654638);
+ }
+ // Köşelerde tozlu sandıklar ve kırık tahtalar (geçiş yolunun dışında).
+ for(const [x,z] of [[-7.7,-4],[7.7,-7],[-7.7,-17],[7.7,-20]]){
+  box(1.2,0.75,0.8,x,0.38,z,0x3b2b20);
+  box(1.25,0.09,0.85,x,0.81,z,0x5a4030);
+  box(0.08,0.8,0.85,x-0.43,0.4,z,0x6b5437);
+ }
+ // Tavandan sarkan avizeler.
+ for(const z of [-2,-15]){
+  box(0.055,0.7,0.055,0,3.55,z,0x655b50);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(0.65,0.055,7,16),new THREE.MeshStandardMaterial({color:0x8c7651,metalness:0.5,roughness:0.65}));
+  ring.rotation.x=Math.PI/2;ring.position.set(0,3.15,z);scene.add(ring);
+  for(let k=0;k<6;k++){
+   const a=k*Math.PI/3;
+   const flame=new THREE.Mesh(new THREE.SphereGeometry(0.09,8,6),new THREE.MeshBasicMaterial({color:0xffbb69}));
+   flame.position.set(Math.cos(a)*0.65,3.18,z+Math.sin(a)*0.65);scene.add(flame);
+  }
+ }
+ // İnce örümcek ağı çizgileri, üst köşelerde.
+ const webMat=new THREE.LineBasicMaterial({color:0x777779,transparent:true,opacity:0.27});
+ for(const z of [5,-6,-19]){
+  for(const side of [-1,1]){
+   const corner=new THREE.Vector3(side*8.75,3.8,z);
+   for(let k=0;k<5;k++){
+    const edge=new THREE.Vector3(side*(8.75-k*0.19),3.8-k*0.18,z-0.7);
+    const geo=new THREE.BufferGeometry().setFromPoints([corner,edge]);scene.add(new THREE.Line(geo,webMat));
+   }
+  }
+ }
+
  // Bodrum kapısı
  door=new THREE.Mesh(
   new THREE.BoxGeometry(2.2,3,0.18),
@@ -295,6 +355,7 @@ function interact(){
 
  if(!hasKey && distance<2.5){
   hasKey=true;
+  playTone(820,0.22,0.065,'triangle');
   scene.remove(keyObject);
   document.getElementById("objective").innerText="GÖREV: Bodrum kapısını aç.";
   document.getElementById("hint").innerText="Paslı anahtarı buldun!";
@@ -305,6 +366,7 @@ function interact(){
 
  if(hasKey && !doorOpen && doorDistance<3){
   doorOpen=true;
+  playTone(95,0.7,0.09,'sawtooth');
   door.rotation.y=Math.PI/2;
   document.getElementById("objective").innerText="GÖREV: Bodrumu keşfet.";
   document.getElementById("hint").innerText="Kapı açıldı!";
@@ -322,26 +384,70 @@ function interact(){
  document.getElementById("hint").innerText="Burada etkileşime geçilecek bir şey yok.";
 }
 
+// Web Audio ile özgün, harici dosya gerektirmeyen sesler.
+function startAmbient(){
+ if(!scareAudio)return;
+ scareAudio.resume().catch(()=>{});
+ ambientOsc=scareAudio.createOscillator();ambientGain=scareAudio.createGain();
+ ambientOsc.type='sine';ambientOsc.frequency.value=55;
+ ambientGain.gain.value=soundOn?0.018:0;
+ ambientOsc.connect(ambientGain);ambientGain.connect(scareAudio.destination);
+ ambientOsc.start();
+}
+function playTone(freq,duration,volume,type='sine'){
+ if(!scareAudio||!soundOn)return;
+ try{
+  const t=scareAudio.currentTime,o=scareAudio.createOscillator(),g=scareAudio.createGain();
+  o.type=type;o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(volume,t+0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+duration);
+  o.connect(g);g.connect(scareAudio.destination);o.start(t);o.stop(t+duration+0.02);
+ }catch(e){}
+}
+function toggleSound(){
+ soundOn=!soundOn;
+ if(ambientGain&&scareAudio)ambientGain.gain.setTargetAtTime(soundOn?0.018:0,scareAudio.currentTime,0.08);
+ document.getElementById('soundToggle').textContent=soundOn?'🔊 SES AÇIK':'🔇 SES KAPALI';
+}
+function playJumpscareScream(){
+ if(!scareAudio||!soundOn)return;
+ try{
+  if(scareAudio.state==='suspended')scareAudio.resume();
+  const ctx=scareAudio,t=ctx.currentTime,duration=1.45;
+  // Sentetik çığlık: tiz, titreşimli tonlar + kısa gürültü patlaması.
+  const master=ctx.createGain();
+  master.gain.setValueAtTime(0.0001,t);
+  master.gain.exponentialRampToValueAtTime(0.23,t+0.045);
+  master.gain.setValueAtTime(0.20,t+0.36);
+  master.gain.exponentialRampToValueAtTime(0.0001,t+duration);
+  master.connect(ctx.destination);
+  for(const [base,level] of [[420,0.55],[730,0.32],[1120,0.18]]){
+   const osc=ctx.createOscillator(),g=ctx.createGain();
+   osc.type='sawtooth';
+   osc.frequency.setValueAtTime(base*1.3,t);
+   osc.frequency.exponentialRampToValueAtTime(base*0.55,t+duration);
+   const vibrato=ctx.createOscillator(),depth=ctx.createGain();
+   vibrato.frequency.value=19;depth.gain.value=base*0.045;
+   vibrato.connect(depth);depth.connect(osc.frequency);
+   g.gain.value=level;osc.connect(g);g.connect(master);
+   osc.start(t);vibrato.start(t);osc.stop(t+duration);vibrato.stop(t+duration);
+  }
+  const sampleRate=ctx.sampleRate,length=Math.floor(sampleRate*0.65);
+  const buffer=ctx.createBuffer(1,length,sampleRate),data=buffer.getChannelData(0);
+  for(let i=0;i<length;i++)data[i]=(Math.random()*2-1)*(1-i/length);
+  const noise=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),noiseGain=ctx.createGain();
+  noise.buffer=buffer;filter.type='highpass';filter.frequency.value=600;
+  noiseGain.gain.value=0.55;noise.connect(filter);filter.connect(noiseGain);noiseGain.connect(master);
+  noise.start(t);noise.stop(t+0.65);
+ }catch(e){console.warn('Jumpscare ses hatası:',e);}
+}
 function triggerScare(){
  if(scareTriggered)return;
  scareTriggered=true;
- scareUntil=performance.now()+1200;
+ scareUntil=performance.now()+1500;
  document.getElementById('scare').classList.add('active');
- // Kısa, orijinal sentezlenmiş korku efekti; harici ses dosyası yok.
- if(scareAudio){
-  try{
-   if(scareAudio.state==='suspended')scareAudio.resume();
-   const t=scareAudio.currentTime;
-   const osc=scareAudio.createOscillator(),gain=scareAudio.createGain();
-   osc.type='sawtooth';osc.frequency.setValueAtTime(650,t);
-   osc.frequency.exponentialRampToValueAtTime(70,t+0.8);
-   gain.gain.setValueAtTime(0.0001,t);
-   gain.gain.exponentialRampToValueAtTime(0.18,t+0.03);
-   gain.gain.exponentialRampToValueAtTime(0.0001,t+0.85);
-   osc.connect(gain);gain.connect(scareAudio.destination);
-   osc.start(t);osc.stop(t+0.9);
-  }catch(e){}
- }
+ playJumpscareScream();
 }
 
 function animate(){
@@ -364,13 +470,31 @@ function animate(){
  let forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
  let right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
 
- if(keys.KeyW||keys.ArrowUp||touch.forward)camera.position.addScaledVector(forward,speed);
- if(keys.KeyS||keys.ArrowDown||touch.back)camera.position.addScaledVector(forward,-speed);
- if(keys.KeyA||keys.ArrowLeft||touch.left)camera.position.addScaledVector(right,-speed);
- if(keys.KeyD||keys.ArrowRight||touch.right)camera.position.addScaledVector(right,speed);
-
- camera.position.x=THREE.MathUtils.clamp(camera.position.x,-8,8);
- camera.position.z=THREE.MathUtils.clamp(camera.position.z,-24,7);
+ // Oyuncu yarıçapı ile duvar ve sütunlara karşı eksen bazlı çarpışma.
+ let direction=new THREE.Vector3();
+ if(keys.KeyW||keys.ArrowUp||touch.forward)direction.add(forward);
+ if(keys.KeyS||keys.ArrowDown||touch.back)direction.sub(forward);
+ if(keys.KeyA||keys.ArrowLeft||touch.left)direction.sub(right);
+ if(keys.KeyD||keys.ArrowRight||touch.right)direction.add(right);
+ if(direction.lengthSq()>0)direction.normalize().multiplyScalar(speed);
+ const radius=0.32;
+ function canStand(x,z){
+  if(x < -8.8+radius || x > 8.8-radius || z < -24.8+radius || z > 9.3-radius)return false;
+  for(const wall of colliders){
+   if(Math.abs(x-wall.x)<wall.halfW+radius && Math.abs(z-wall.z)<wall.halfD+radius)return false;
+  }
+  // Bodrum kapısı açılana kadar kapalıdır.
+  if(!doorOpen && Math.abs(x-door.position.x)<1.1+radius && Math.abs(z-door.position.z)<0.09+radius)return false;
+  return true;
+ }
+ const nextX=camera.position.x+direction.x;
+ if(canStand(nextX,camera.position.z))camera.position.x=nextX;
+ const nextZ=camera.position.z+direction.z;
+ if(canStand(camera.position.x,nextZ))camera.position.z=nextZ;
+ const moving=keys.KeyW||keys.KeyA||keys.KeyS||keys.KeyD||keys.ArrowUp||keys.ArrowDown||keys.ArrowLeft||keys.ArrowRight||touch.forward||touch.back||touch.left||touch.right;
+ if(moving && performance.now()-lastStepAt>460){
+  lastStepAt=performance.now();playTone(65+Math.random()*18,0.11,0.035,'triangle');
+ }
 
  // Işık ve hedef kameraya bağlı: yerel koordinatları değiştirmiyoruz.
 
