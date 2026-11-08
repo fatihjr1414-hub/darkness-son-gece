@@ -334,8 +334,7 @@ function animate(){
  camera.position.x=THREE.MathUtils.clamp(camera.position.x,-8,8);
  camera.position.z=THREE.MathUtils.clamp(camera.position.z,-24,7);
 
- flashlight.position.copy(camera.position);
- flashlight.target.position.copy(camera.position).add(forward);
+ // Işık ve hedef kameraya bağlı: yerel koordinatları değiştirmiyoruz.
 
  if(!hasKey){
   keyObject.rotation.y+=dt*1.5;
