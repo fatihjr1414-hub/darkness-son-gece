@@ -255,174 +255,150 @@ function box(w,h,d,x,y,z,color,solid=false){
  return mesh;
 }
 
+function addOrnament(x,y,z,r=0.18,color=0xc6a46a){
+ const m=new THREE.Mesh(new THREE.SphereGeometry(r,12,8),new THREE.MeshStandardMaterial({color,metalness:.75,roughness:.25}));
+ m.position.set(x,y,z);scene.add(m);return m;
+}
+function addRug(x,z,w,d){
+ box(w,.025,d,x,.025,z,0x551824);
+ box(w-.18,.027,d-.18,x,.045,z,0xb28a4b);
+ box(w-.35,.03,d-.35,x,.065,z,0x46111c);
+ for(let k=0;k<5;k++){
+  const zz=z-d*.4+k*d*.2;
+  box(w*.6,.032,.045,x,.083,zz,0x9c7849);
+ }
+}
+function addChandelier(x,z){
+ box(.07,.9,.07,x,3.6,z,0x9b7a40);
+ const ring=new THREE.Mesh(new THREE.TorusGeometry(.72,.065,8,24),new THREE.MeshStandardMaterial({color:0xd0ad66,metalness:.85,roughness:.25}));
+ ring.rotation.x=Math.PI/2;ring.position.set(x,3.1,z);scene.add(ring);
+ for(let k=0;k<8;k++){
+  const a=k*Math.PI/4;
+  const xx=x+Math.cos(a)*.72,zz=z+Math.sin(a)*.72;
+  box(.09,.26,.09,xx,3.24,zz,0xe3cfaa);
+  addOrnament(xx,3.43,zz,.095,0xffdf9a);
+ }
+ const l=new THREE.PointLight(0xffc17b,.75,10);l.position.set(x,3.1,z);scene.add(l);
+}
+function addPainting(x,z,side){
+ box(.12,1.65,1.35,x,2.35,z,0xc5a05b);
+ box(.14,1.4,1.1,x-side*.035,2.35,z,0x222d35);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.24,12,8),new THREE.MeshStandardMaterial({color:0x77706c,roughness:1}));
+ head.scale.set(.23,1,.8);head.position.set(x-side*.13,2.53,z);scene.add(head);
+ box(.12,.6,.5,x-side*.13,1.96,z,0x3a2529);
+}
 function createRoom(){
- // Zemin
- box(18,0.3,35,0,-0.15,-8,0x282323);
-
- // Tavan
- box(18,0.3,35,0,4,-8,0x17171d);
-
- // Koridor duvarlarında odalara açılan gerçek kapı boşlukları.
+ // 18 birim genişliğinde ana koridor; girişler iki tarafta da 4.8 birim açık.
+ box(18,.3,35,0,-.15,-8,0x3d3633);
+ box(18,.3,35,0,4.1,-8,0x29242c);
  for(const side of [-1,1]){
-  for(const [a,b] of [[-25,-19.1],[-15.9,-6.1],[-2.9,9.5]]){
-   box(.35,4,b-a,side*9,2,(a+b)/2,0x27232a,true);
+  // Duvarlar ile oda girişleri aynı koordinatlarda kesintiye uğrar.
+  for(const [a,b] of [[-25,-19.9],[-15.1,-6.9],[-2.1,9.5]]){
+   box(.35,4.1,b-a,side*9,2.05,(a+b)/2,0x4c4044,true);
   }
-  // İki kapının üstünde ahşap lento
-  for(const z of [-17.5,-4.5])box(.4,.9,3.2,side*9,3.55,z,0x49352b,true);
- }
-
- // Arka duvar
- box(18,4,0.4,0,2,-25,0x242127,true);
-
- // Koridorun ara duvarları
- box(0.3,4,8,-5,2,-12,0x332a2b,true);
- box(0.3,4,8,5,2,-12,0x332a2b,true);
-
- // Ahşap sütunlar
- for(let z=2;z>-23;z-=5){
-  box(0.5,4,0.5,-7,2,z,0x49352b,true);
-  box(0.5,4,0.5,7,2,z,0x49352b,true);
- }
-
- // Halı
- box(4,0.05,24,0,0.02,-9,0x35151b);
-
- // Eski masa
- box(2,0.2,1,3,1,-9,0x39251c);
- box(0.15,1,0.15,2.2,0.5,-9,0x241a16);
- box(0.15,1,0.15,3.8,0.5,-9,0x241a16);
-
- // Lambalar
- for(let z=3;z>-24;z-=7){
-  const light=new THREE.PointLight(0x7e3333,1.1,8);
-  light.position.set(0,3.6,z);
-  scene.add(light);
- }
- 
- // Malikânenin eski dekorları: tablolar, duvar aplikleri, halı desenleri.
- const paintingColors=[0x302b24,0x2a3433,0x44302f,0x222b35];
- for(let i=0;i<6;i++){
-  const z=3-i*4.5;
-  for(const side of [-1,1]){
-   const frame=box(0.12,1.45,1.2,side*8.74,2.3,z,0x765033);
-   const canvas=box(0.14,1.14,0.91,side*8.65,2.3,z,paintingColors[i%4]);
-   // Soyut, soluk bir portre silueti.
-   const face=new THREE.Mesh(new THREE.SphereGeometry(0.22,8,8),new THREE.MeshStandardMaterial({color:0x77716a,roughness:1}));
-   face.scale.set(0.2,1,0.7);face.position.set(side*8.54,2.44,z);scene.add(face);
+  // Giriş üstleri oyuncunun kafasını engellemeyecek kadar yüksek.
+  for(const z of [-17.5,-4.5]){
+   box(.4,.75,4.8,side*9,3.72,z,0x9b7849);
+   for(const dz of [-2.4,2.4])box(.5,3.25,.32,side*9,1.63,z+dz,0x9b7849);
   }
  }
- // Koridorun iki tarafında eski pirinç aplikler.
- for(let z=3;z>-24;z-=7){
-  for(const side of [-1,1]){
-   box(0.32,0.42,0.35,side*8.55,2.95,z,0x66523a);
-   const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.13,10,8),new THREE.MeshBasicMaterial({color:0xff9b49}));
-   bulb.position.set(side*8.36,3.15,z);scene.add(bulb);
-   const glow=new THREE.PointLight(0xff7c39,0.38,4);glow.position.copy(bulb.position);scene.add(glow);
+ box(18,4.1,.4,0,2.05,-25,0x41363c,true);
+ // Duvar panel çıtaları, mermer döşeme ve altın detaylar.
+ for(let z=8;z>-24;z-=1.7){
+  box(17.8,.012,.055,0,.018,z,0x8e8276);
+  box(17.8,.013,.025,0,.026,z+.22,0x5b5351);
+ }
+ for(const side of [-1,1]){
+  for(const z of [7,-9,-23]){
+   box(.15,.13,2.4,side*8.72,1.1,z,0xb28d53);
+   box(.15,.13,2.4,side*8.72,3.4,z,0xb28d53);
+  }
+  for(const z of [6,-10,-22])addPainting(side*8.74,z,side);
+  for(const z of [2,-12,-22]){
+   box(.35,.65,.38,side*8.6,2.65,z,0xb88e50);
+   addOrnament(side*8.38,2.95,z,.14,0xffcc7b);
   }
  }
- // Yıpranmış halının işlemeleri.
- for(let z=1;z>-21;z-=2){
-  box(3.6,0.008,0.06,0,0.053,z,0x6e483b);
-  box(0.055,0.008,1.6,-1.72,0.055,z-0.8,0x654638);
-  box(0.055,0.008,1.6,1.72,0.055,z-0.8,0x654638);
+ addRug(0,-8,3.7,25);
+ for(const z of [1,-11,-20])addChandelier(0,z);
+ // Duvar kenarında gösterişli sehpalar ve vazolar.
+ for(const [x,z] of [[-7.2,-8],[7.2,-14],[-7.2,-22]]){
+  box(1.6,.18,.7,x,1.0,z,0x654331);
+  for(const dx of [-.65,.65])box(.12,.9,.12,x+dx,.5,z,0x8e693d);
+  const vase=new THREE.Mesh(new THREE.CylinderGeometry(.16,.26,.62,12),new THREE.MeshStandardMaterial({color:0x57616b,metalness:.35,roughness:.3}));
+  vase.position.set(x,1.4,z);scene.add(vase);
  }
- // Köşelerde tozlu sandıklar ve kırık tahtalar (geçiş yolunun dışında).
- for(const [x,z] of [[-7.7,-4],[7.7,-7],[-7.7,-17],[7.7,-20]]){
-  box(1.2,0.75,0.8,x,0.38,z,0x3b2b20);
-  box(1.25,0.09,0.85,x,0.81,z,0x5a4030);
-  box(0.08,0.8,0.85,x-0.43,0.4,z,0x6b5437);
- }
- // Tavandan sarkan avizeler.
- for(const z of [-2,-15]){
-  box(0.055,0.7,0.055,0,3.55,z,0x655b50);
-  const ring=new THREE.Mesh(new THREE.TorusGeometry(0.65,0.055,7,16),new THREE.MeshStandardMaterial({color:0x8c7651,metalness:0.5,roughness:0.65}));
-  ring.rotation.x=Math.PI/2;ring.position.set(0,3.15,z);scene.add(ring);
-  for(let k=0;k<6;k++){
-   const a=k*Math.PI/3;
-   const flame=new THREE.Mesh(new THREE.SphereGeometry(0.09,8,6),new THREE.MeshBasicMaterial({color:0xffbb69}));
-   flame.position.set(Math.cos(a)*0.65,3.18,z+Math.sin(a)*0.65);scene.add(flame);
-  }
- }
- // İnce örümcek ağı çizgileri, üst köşelerde.
- const webMat=new THREE.LineBasicMaterial({color:0x777779,transparent:true,opacity:0.27});
- for(const z of [5,-6,-19]){
-  for(const side of [-1,1]){
-   const corner=new THREE.Vector3(side*8.75,3.8,z);
-   for(let k=0;k<5;k++){
-    const edge=new THREE.Vector3(side*(8.75-k*0.19),3.8-k*0.18,z-0.7);
-    const geo=new THREE.BufferGeometry().setFromPoints([corner,edge]);scene.add(new THREE.Line(geo,webMat));
-   }
-  }
- }
-
- // Koridorun iki yanında dört adet girilebilir oda.
  createSideRoom(-1,-4.5,'YATAK ODASI');
  createSideRoom(1,-4.5,'MUTFAK');
  createSideRoom(-1,-17.5,'BANYO');
  createSideRoom(1,-17.5,'GİZLİ DEPO');
- // Bodrum kapısı
- door=new THREE.Mesh(
-  new THREE.BoxGeometry(2.2,3,0.18),
-  new THREE.MeshStandardMaterial({color:0x38231d})
- );
- door.position.set(0,1.5,-24.5);
- scene.add(door);
+ door=new THREE.Mesh(new THREE.BoxGeometry(2.2,3,.18),new THREE.MeshStandardMaterial({color:0x54382b,metalness:.15,roughness:.7}));
+ door.position.set(0,1.5,-24.5);scene.add(door);
+ for(const dx of [-.8,.8])box(.1,2.6,.2,dx,1.5,-24.37,0xb99154);
+ addOrnament(.62,1.5,-24.3,.12,0xd4ad62);
 }
-
-
 function createSideRoom(side,cz,name){
- const x=side*14.2, width=10.2, depth=9;
- const wood=0x30251e, wall=0x383138;
- box(width,.25,depth,x,-.13,cz,wood);
- box(width,.25,depth,x,4.05,cz,0x201c22);
- box(width,4,.35,x,2,cz-depth/2,wall,true);
- box(width,4,.35,x,2,cz+depth/2,wall,true);
- box(.35,4,depth,side*19.2,2,cz,wall,true);
- // Giriş kapısı yanındaki ahşap söveler ve üst pervaz.
- for(const dz of [-1.65,1.65])box(.25,3,.28,side*9.1,1.5,cz+dz,0x694632);
- box(.3,.22,3.6,side*9.1,3.04,cz,0x694632);
- // Ahşap zemin tahtaları, duvar panelleri, tavan kirişleri.
- for(let k=-4;k<=4;k++)box(.035,.012,depth-.35,x+k*1.05,.015,cz,0x5b4335);
- for(let k=-3;k<=3;k++)box(.12,3.5,.12,x+k*1.4,2,cz-depth/2+.22,0x4c3931);
- const lamp=new THREE.PointLight(0xffac68,.58,8);lamp.position.set(x,3.2,cz);scene.add(lamp);roomLights.push(lamp);
- // Duvara asılı soluk resim ve çerçeve.
- box(1.65,1.35,.12,x,2.4,cz-depth/2+.3,0x75523a);
- box(1.38,1.08,.14,x,2.4,cz-depth/2+.4,0x292d32);
+ // Oda, koridor duvarının dışından başlar: iç sınır x=±8.8.
+ const x=side*14.05,w=10.5,d=9;
+ box(w+.35,.26,d,x,-.13,cz,0x5d5149);
+ box(w,.25,d,x,4.1,cz,0x2d2730);
+ box(w,4.1,.35,x,2.05,cz-d/2,0x4a3c41,true);
+ box(w,4.1,.35,x,2.05,cz+d/2,0x4a3c41,true);
+ box(.35,4.1,d,side*19.3,2.05,cz,0x4a3c41,true);
+ // Oda girişinde TAMAMEN AÇIK geçiş; dekorasyonun collider'ı yok.
+ for(const dz of [-2.4,2.4])box(.2,3.2,.2,side*8.95,1.6,cz+dz,0xb18b54);
+ box(.22,.65,4.8,side*8.95,3.72,cz,0xb18b54);
+ // Mermer desenli döşeme: altın çerçeveli karo çizgileri.
+ for(let k=-4;k<=4;k++)box(.035,.012,d-.4,x+k*1.06,.025,cz,0x99877c);
+ for(let k=-3;k<=3;k++)box(w-.4,.012,.035,x,.028,cz+k*1.05,0x99877c);
+ for(const zz of [cz-3.6,cz+3.6]){
+  box(w-.5,.1,.12,x,1.15,zz,0xb3925a);
+  box(w-.5,.1,.12,x,3.4,zz,0xb3925a);
+ }
+ addChandelier(x,cz);
+ const lamp=new THREE.PointLight(0xffb879,.5,9);lamp.position.set(x,3.1,cz);scene.add(lamp);roomLights.push(lamp);
+ addRug(x,cz,3.3,4.1);
+ box(1.8,1.5,.12,x,2.35,cz-d/2+.25,0xc2a06b);
+ box(1.52,1.22,.14,x,2.35,cz-d/2+.35,0x28303b);
  if(name==='YATAK ODASI'){
-  box(3,.55,2.5,x,0.6,cz-1.3,0x4b3834);
-  box(3,.28,2.5,x,.98,cz-1.3,0x7a706a);
-  box(3,1.2,.2,x,1.0,cz-2.6,0x4b3329);
-  box(1.8,.16,.8,x,1.19,cz-2.1,0xb5aaa0);
-  box(1.3,2.8,1.4,x+side*3,1.4,cz+1.7,0x463026);
-  box(1.37,.12,1.5,x+side*3,2.83,cz+1.7,0x6e4a31);
-  addHideSpot(x+side*2.2,cz+1.7,'DOLAP');
-  addHideSpot(x,cz-.4,'YATAK ALTI');
+  box(3.2,.5,2.5,x,.65,cz-1.35,0x5b3035);
+  box(3.1,.26,2.4,x,1.05,cz-1.35,0xb4a6a0);
+  box(3.3,1.3,.22,x,1.05,cz-2.65,0x7e5339);
+  box(1.5,.18,.7,x,1.22,cz-2.1,0xd8cfc3);
+  const wardrobeX=x+side*3;
+  box(1.45,2.8,1.35,wardrobeX,1.4,cz+1.8,0x5a392d);
+  box(1.48,.08,1.38,wardrobeX,2.84,cz+1.8,0xb18b54);
+  for(const zz of [-.34,.34])addOrnament(wardrobeX-side*.73,1.5,cz+1.8+zz,.06);
+  addHideSpot(x+side*2.2,cz+1.8,'DOLAP');
+  addHideSpot(x,cz-.45,'YATAK ALTI');
  }else if(name==='MUTFAK'){
-  box(3,1.1,1.1,x,0.55,cz-2.5,0x514038);
-  box(3,.15,1.2,x,1.18,cz-2.5,0x77716b);
-  box(1.4,.18,1.4,x+side*1.7,1.1,cz+1.1,0x473025);
-  for(const dx of [-.6,.6])box(.12,1,.12,x+side*1.7+dx,.5,cz+1.1,0x33231c);
-  const pot=new THREE.Mesh(new THREE.CylinderGeometry(.3,.25,.25,12),new THREE.MeshStandardMaterial({color:0x4a4b4c,metalness:.65,roughness:.5}));pot.position.set(x,1.4,cz-2.5);scene.add(pot);
+  box(3.7,1.1,1.1,x,.55,cz-2.5,0x604c42);
+  box(3.8,.14,1.2,x,1.16,cz-2.5,0xc6b9a6);
+  for(const dx of [-1.1,0,1.1])box(.08,.7,.09,x+dx,.56,cz-1.92,0xb18b54);
+  box(2.4,.18,1.3,x,1.02,cz+1.5,0x714d39);
+  for(const dx of [-.9,.9])for(const dz of [-.45,.45])box(.12,.95,.12,x+dx,.5,cz+1.5+dz,0x9c774a);
+  const pot=new THREE.Mesh(new THREE.CylinderGeometry(.34,.29,.3,14),new THREE.MeshStandardMaterial({color:0x6b7077,metalness:.75,roughness:.3}));
+  pot.position.set(x,1.42,cz-2.5);scene.add(pot);
  }else if(name==='BANYO'){
-  box(2.8,.8,1.45,x,.45,cz-2.3,0x9d9b93);
-  box(2.5,.4,1.1,x,.96,cz-2.3,0x292c2d);
-  box(1.6,1.2,.12,x,2.4,cz-depth/2+.38,0xaaa9a4);
-  box(1.8,.18,.7,x,1.25,cz-depth/2+.6,0x8b817b);
-  box(.85,.6,.9,x+side*2.8,.4,cz+1.8,0xb7aea2);
+  box(3.1,.85,1.6,x,.48,cz-2.3,0xd0c7bc);
+  box(2.8,.42,1.25,x,.98,cz-2.3,0x3c454a);
+  box(1.8,1.4,.12,x,2.4,cz-d/2+.38,0xc5a16a);
+  box(1.56,1.15,.13,x,2.4,cz-d/2+.48,0x73838b);
+  box(1.5,.18,.7,x,1.25,cz-d/2+.6,0xd1c6b5);
+  box(.8,.75,.9,x+side*2.9,.4,cz+1.8,0xbcb1a7);
  }else{
   for(let k=0;k<3;k++){
-   const zz=cz-2.7+k*2.4;
-   box(1.1,2.5,2.0,x+side*2.8,1.25,zz,0x44382c);
-   for(let j=0;j<3;j++)box(.95,.12,1.85,x+side*2.8,.5+j*.8,zz,0x705039);
+   const zz=cz-2.6+k*2.4;
+   box(1.1,2.6,1.9,x+side*2.9,1.3,zz,0x544135);
+   for(let j=0;j<3;j++)box(1.15,.1,2,x+side*2.9,.55+j*.82,zz,0x9a764c);
   }
   for(const [dx,dz] of [[-1,-1.5],[1,1.7]]){
-   box(1.1,.8,.9,x+dx,.4,cz+dz,0x5b4830);
-   box(1.14,.08,.94,x+dx,.84,cz+dz,0x806244);
+   box(1.1,.8,.9,x+dx,.4,cz+dz,0x6c4b35);
+   box(1.14,.08,.94,x+dx,.84,cz+dz,0xc09b60);
   }
   addHideSpot(x-side*1.6,cz+2,'SANDIK ARKASI');
  }
- // Oda tabelası
- const plaque=box(.1,.5,1.9,side*8.82,2.9,cz-2.4,0x745039);
+ const plaque=box(.1,.5,1.9,side*8.8,2.85,cz-2.6,0xb18b54);
  plaque.userData.room=name;
 }
 function addHideSpot(x,z,label){hideSpots.push({x,z,label});}
