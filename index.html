@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>DARKNESS: SON GECE</title>
+<title>DARKNESS: SON GECE 2.5</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#050505;color:white;font-family:Arial;overflow:hidden}
@@ -120,6 +120,7 @@ let apparition=null,apparitionState="idle",apparitionTime=0,apparitionStart=null
 let ambientOsc=null,ambientGain=null,lastStepAt=0,soundOn=true;
 let hideSpots=[],hiddenSpot=null,stormLight=null,stormTimer=3,flashTimer=0,roomLights=[],ambientRain=null;
 let stormClock=0,creakTimer=7;
+let materialCache={};
 
 function startGame(){
  if(!window.THREE){
@@ -148,7 +149,7 @@ function isMobile(){
 function init3D(){
  scene=new THREE.Scene();
  scene.background=new THREE.Color(0x050609);
- scene.fog=new THREE.FogExp2(0x08090d,0.045);
+ scene.fog=new THREE.FogExp2(0x101016,0.019);
 
  camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,100);
  camera.position.set(0,1.7,7);
@@ -158,13 +159,16 @@ function init3D(){
  renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
  renderer.shadowMap.enabled=true;
  renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+ renderer.outputColorSpace=THREE.SRGBColorSpace;
+ renderer.toneMapping=THREE.ACESFilmicToneMapping;
+ renderer.toneMappingExposure=1.35;
  document.getElementById("game").prepend(renderer.domElement);
 
  clock=new THREE.Clock();
 
- scene.add(new THREE.HemisphereLight(0x667080,0x171016,0.4));
+ scene.add(new THREE.HemisphereLight(0x9da4bd,0x332329,0.85));
 
- const ambient=new THREE.PointLight(0x7c3030,1.2,12);
+ const ambient=new THREE.PointLight(0xb87865,1.35,20);
  ambient.position.set(0,3,-8);
  scene.add(ambient);
 
@@ -241,16 +245,58 @@ function init3D(){
  animate();
 }
 
+// Tekrarlanabilir mermer, ahşap ve sıva kaplamaları: tümü yerel olarak üretilir.
+// DARKNESS 2.4: GitHub Pages üzerinde textures/ klasöründen gerçek JPG kaplamalar.
+const externalTextures={};
+function textureFor(color){
+ const floor=[0x3d3633,0x5d5149,0x551824,0xb28a4b,0x46111c].includes(color);
+ const wall=[0x4c4044,0x4a3c41,0x41363c,0x29242c,0x2d2730].includes(color);
+ const doorWood=[0x54382b,0x654331,0x7e5339,0x9b7849,0xb18b54].includes(color);
+ return floor?(color===0x551824||color===0x46111c?'marble':'wood'):wall?'wallpaper':doorWood?'door':null;
+}
+function surfaceMaterial(color){
+ const name=textureFor(color);
+ if(name){
+  if(!externalTextures[name]){
+   const tex=new THREE.TextureLoader().load('textures/'+name+'.jpg',undefined,undefined,()=>console.warn('Kaplama yüklenemedi:',name));
+   tex.colorSpace=THREE.SRGBColorSpace;
+   tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+   tex.anisotropy=4;
+   externalTextures[name]=tex;
+  }
+  const key='file:'+name;
+  if(!materialCache[key])materialCache[key]=new THREE.MeshStandardMaterial({map:externalTextures[name],roughness:name==='marble'?.26:name==='wood'?.72:.85,metalness:name==='marble'?.16:0});
+  return materialCache[key];
+ }
+ return proceduralSurfaceMaterial(color);
+}
+function proceduralSurfaceMaterial(color){
+ const key=String(color);if(materialCache[key])return materialCache[key];
+ const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;
+ const c=canvas.getContext('2d');const rgb=new THREE.Color(color);
+ const r=Math.round(rgb.r*255),g=Math.round(rgb.g*255),b=Math.round(rgb.b*255);
+ c.fillStyle=`rgb(${r},${g},${b})`;c.fillRect(0,0,256,256);
+ const floor=[0x3d3633,0x5d5149,0x551824,0xb28a4b,0x46111c].includes(color);
+ const wall=[0x4c4044,0x4a3c41,0x41363c,0x29242c,0x2d2730].includes(color);
+ let seed=(color^0x9e3779b9)>>>0;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+ if(floor){
+  for(let i=0;i<150;i++){const y=rand()*256;c.strokeStyle=`rgba(240,215,190,${rand()*.10})`;c.lineWidth=rand()*1.5+.2;c.beginPath();c.moveTo(0,y);c.bezierCurveTo(70,y+rand()*8-4,180,y+rand()*8-4,256,y+rand()*10-5);c.stroke();}
+  for(let i=0;i<7;i++){let y=i*42;c.strokeStyle='rgba(10,7,8,.28)';c.lineWidth=2;c.beginPath();c.moveTo(0,y);c.lineTo(256,y);c.stroke();}
+ }else if(wall){
+  for(let i=0;i<850;i++){let x=rand()*256,y=rand()*256,v=rand()>.5?255:0;c.fillStyle=`rgba(${v},${v},${v},${rand()*.045})`;c.fillRect(x,y,rand()*5+1,rand()*5+1);}
+  c.strokeStyle='rgba(212,179,120,.15)';c.lineWidth=3;c.strokeRect(13,13,230,230);
+ }else{
+  for(let i=0;i<450;i++){let v=rand()>.5?255:0;c.fillStyle=`rgba(${v},${v},${v},${rand()*.055})`;c.fillRect(rand()*256,rand()*256,rand()*5+1,rand()*5+1);}
+ }
+ const tex=new THREE.CanvasTexture(canvas);tex.colorSpace=THREE.SRGBColorSpace;
+ tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.anisotropy=4;
+ const mat=new THREE.MeshStandardMaterial({map:tex,color:0xffffff,roughness:floor?.69:wall?.88:.75,metalness:0.04});
+ materialCache[key]=mat;return mat;
+}
 function box(w,h,d,x,y,z,color,solid=false){
- const mesh=new THREE.Mesh(
-  new THREE.BoxGeometry(w,h,d),
-  new THREE.MeshStandardMaterial({color:color,roughness:0.95})
- );
- mesh.position.set(x,y,z);
- mesh.castShadow=true;
- mesh.receiveShadow=true;
- scene.add(mesh);
- objects.push(mesh);
+ const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),surfaceMaterial(color));
+ mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;
+ scene.add(mesh);objects.push(mesh);
  if(solid)colliders.push({x,z,halfW:w/2,halfD:d/2});
  return mesh;
 }
@@ -278,7 +324,7 @@ function addChandelier(x,z){
   box(.09,.26,.09,xx,3.24,zz,0xe3cfaa);
   addOrnament(xx,3.43,zz,.095,0xffdf9a);
  }
- const l=new THREE.PointLight(0xffc17b,.75,10);l.position.set(x,3.1,z);scene.add(l);
+ const l=new THREE.PointLight(0xffd6a3,1.35,16);l.position.set(x,3.1,z);scene.add(l);
 }
 function addPainting(x,z,side){
  box(.12,1.65,1.35,x,2.35,z,0xc5a05b);
@@ -287,19 +333,81 @@ function addPainting(x,z,side){
  head.scale.set(.23,1,.8);head.position.set(x-side*.13,2.53,z);scene.add(head);
  box(.12,.6,.5,x-side*.13,1.96,z,0x3a2529);
 }
+
+// DARKNESS 2.5: ayrıntılı üç boyutlu mimari ve dekorasyon (çarpışmasız dekorlar).
+function palaceMesh(geometry,material,x,y,z,rx=0,ry=0,rz=0){
+ const m=new THREE.Mesh(geometry,material);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);
+ m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
+}
+const palaceGold=new THREE.MeshStandardMaterial({color:0xa77b38,metalness:.78,roughness:.28});
+const palaceStone=new THREE.MeshStandardMaterial({color:0xb3aaa0,roughness:.58});
+const palaceVelvet=new THREE.MeshStandardMaterial({color:0x4a111e,roughness:.95,side:THREE.DoubleSide});
+function palaceColumn(x,z){
+ palaceMesh(new THREE.CylinderGeometry(.31,.37,3.45,20),palaceStone,x,1.92,z);
+ palaceMesh(new THREE.CylinderGeometry(.48,.48,.19,20),palaceGold,x,.23,z);
+ palaceMesh(new THREE.CylinderGeometry(.46,.39,.24,20),palaceGold,x,3.68,z);
+ for(let i=0;i<12;i++){
+  const a=i*Math.PI/6;
+  palaceMesh(new THREE.CylinderGeometry(.028,.028,3.1,6),palaceGold,x+Math.cos(a)*.34,1.92,z+Math.sin(a)*.34);
+ }
+}
+function palaceCurtain(x,z,side){
+ const rail=palaceMesh(new THREE.CylinderGeometry(.045,.045,2.6,10),palaceGold,x,3.35,z,0,0,Math.PI/2);
+ for(let i=0;i<9;i++){
+  const offset=(i-4)*.24;
+  palaceMesh(new THREE.BoxGeometry(.29,2.4+Math.sin(i*.9)*.12,.09),palaceVelvet,x+offset,2.05,z+.05*Math.sin(i*2));
+ }
+ palaceMesh(new THREE.SphereGeometry(.11,10,8),palaceGold,x-1.35,3.35,z);
+ palaceMesh(new THREE.SphereGeometry(.11,10,8),palaceGold,x+1.35,3.35,z);
+}
+function palaceGrandDetails(){
+ // Duvar boyunca sıralanan sütunlar: kapı açıklıklarının uzağında.
+ for(const z of [5,-9.5,-23])for(const side of [-1,1])palaceColumn(side*8.25,z);
+ // Kavisli giriş kemerleri; çarpışma nesnesi değildir.
+ for(const z of [-17.5,-4.5])for(const side of [-1,1]){
+  for(let i=0;i<=14;i++){
+   const a=Math.PI*i/14;
+   palaceMesh(new THREE.BoxGeometry(.18,.18,.34),palaceGold,side*8.97,3.14+Math.sin(a)*.65,z-2.85+Math.cos(a)*2.85);
+  }
+ }
+ // Lüks kırmızı kadife perdeler, koridorun uzak duvarında.
+ palaceCurtain(-5.5,-24.65,-1);palaceCurtain(5.5,-24.65,1);
+ // Kristal görünümlü avize sarkıtları.
+ const crystal=new THREE.MeshPhysicalMaterial({color:0xe8e4dc,metalness:.08,roughness:.08,transparent:true,opacity:.8,transmission:.55});
+ for(const z of [1,-11,-20])for(let i=0;i<12;i++){
+  const a=i*Math.PI/6;
+  palaceMesh(new THREE.ConeGeometry(.065,.35,6),crystal,Math.cos(a)*.63,2.77,z+Math.sin(a)*.63,Math.PI);
+ }
+ // Oda içlerine detaylı süpürgelikler ve tavan rozetleri.
+ for(const cz of [-17.5,-4.5])for(const side of [-1,1]){
+  const x=side*14.05;
+  for(const zz of [cz-4.27,cz+4.27]){
+   palaceMesh(new THREE.BoxGeometry(9.7,.15,.1),palaceGold,x,.18,zz);
+   palaceMesh(new THREE.BoxGeometry(9.7,.12,.1),palaceGold,x,3.88,zz);
+  }
+  palaceMesh(new THREE.TorusGeometry(.62,.07,10,28),palaceGold,x,3.94,cz,Math.PI/2);
+  palaceMesh(new THREE.TorusGeometry(.38,.045,10,28),palaceGold,x,3.94,cz,Math.PI/2);
+ }
+}
+
 function createRoom(){
  // 18 birim genişliğinde ana koridor; girişler iki tarafta da 4.8 birim açık.
  box(18,.3,35,0,-.15,-8,0x3d3633);
+ // Koridorun her iki tarafındaki kapı eşiklerini belirginleştir.
+ for(const z of [-17.5,-4.5])for(const side of [-1,1]){
+  box(2.4,.04,6.2,side*9,.015,z,0x9e8065);
+  box(2.1,.045,5.9,side*9,.045,z,0x5b514e);
+ }
  box(18,.3,35,0,4.1,-8,0x29242c);
  for(const side of [-1,1]){
   // Duvarlar ile oda girişleri aynı koordinatlarda kesintiye uğrar.
-  for(const [a,b] of [[-25,-19.9],[-15.1,-6.9],[-2.1,9.5]]){
+  for(const [a,b] of [[-25,-21.1],[-13.9,-8.1],[-0.9,9.5]]){
    box(.35,4.1,b-a,side*9,2.05,(a+b)/2,0x4c4044,true);
   }
   // Giriş üstleri oyuncunun kafasını engellemeyecek kadar yüksek.
   for(const z of [-17.5,-4.5]){
-   box(.4,.75,4.8,side*9,3.72,z,0x9b7849);
-   for(const dz of [-2.4,2.4])box(.5,3.25,.32,side*9,1.63,z+dz,0x9b7849);
+   box(.4,.75,7.2,side*9,3.72,z,0x9b7849);
+   for(const dz of [-3.6,3.6])box(.22,3.25,.22,side*9,1.63,z+dz,0x9b7849);
   }
  }
  box(18,4.1,.4,0,2.05,-25,0x41363c,true);
@@ -328,6 +436,7 @@ function createRoom(){
   const vase=new THREE.Mesh(new THREE.CylinderGeometry(.16,.26,.62,12),new THREE.MeshStandardMaterial({color:0x57616b,metalness:.35,roughness:.3}));
   vase.position.set(x,1.4,z);scene.add(vase);
  }
+ palaceGrandDetails();
  createSideRoom(-1,-4.5,'YATAK ODASI');
  createSideRoom(1,-4.5,'MUTFAK');
  createSideRoom(-1,-17.5,'BANYO');
@@ -346,8 +455,8 @@ function createSideRoom(side,cz,name){
  box(w,4.1,.35,x,2.05,cz+d/2,0x4a3c41,true);
  box(.35,4.1,d,side*19.3,2.05,cz,0x4a3c41,true);
  // Oda girişinde TAMAMEN AÇIK geçiş; dekorasyonun collider'ı yok.
- for(const dz of [-2.4,2.4])box(.2,3.2,.2,side*8.95,1.6,cz+dz,0xb18b54);
- box(.22,.65,4.8,side*8.95,3.72,cz,0xb18b54);
+ for(const dz of [-3.6,3.6])box(.2,3.2,.2,side*8.95,1.6,cz+dz,0xb18b54);
+ box(.22,.65,7.2,side*8.95,3.72,cz,0xb18b54);
  // Mermer desenli döşeme: altın çerçeveli karo çizgileri.
  for(let k=-4;k<=4;k++)box(.035,.012,d-.4,x+k*1.06,.025,cz,0x99877c);
  for(let k=-3;k<=3;k++)box(w-.4,.012,.035,x,.028,cz+k*1.05,0x99877c);
@@ -356,7 +465,7 @@ function createSideRoom(side,cz,name){
   box(w-.5,.1,.12,x,3.4,zz,0xb3925a);
  }
  addChandelier(x,cz);
- const lamp=new THREE.PointLight(0xffb879,.5,9);lamp.position.set(x,3.1,cz);scene.add(lamp);roomLights.push(lamp);
+ const lamp=new THREE.PointLight(0xffc999,1.35,14);lamp.position.set(x,3.1,cz);scene.add(lamp);roomLights.push(lamp);
  addRug(x,cz,3.3,4.1);
  box(1.8,1.5,.12,x,2.35,cz-d/2+.25,0xc2a06b);
  box(1.52,1.22,.14,x,2.35,cz-d/2+.35,0x28303b);
@@ -441,7 +550,7 @@ function updateStorm(dt){
  }
  if(flashTimer>0){flashTimer-=dt;stormLight.intensity=Math.random()>.27?2.6:0.35;}
  else stormLight.intensity=0;
- for(let i=0;i<roomLights.length;i++)roomLights[i].intensity=.48+Math.sin(stormClock*3+i*1.7)*.09+(flashTimer>0?.18:0);
+ for(let i=0;i<roomLights.length;i++)roomLights[i].intensity=1.05+Math.sin(stormClock*3+i*1.7)*.09+(flashTimer>0?.18:0);
  creakTimer-=dt;
  if(creakTimer<=0){creakTimer=6+Math.random()*10;playTone(85+Math.random()*50,.65,.016,'sawtooth');}
 }
@@ -667,7 +776,7 @@ function animate(){
  if(keys.KeyA||keys.ArrowLeft||touch.left)direction.sub(right);
  if(keys.KeyD||keys.ArrowRight||touch.right)direction.add(right);
  if(direction.lengthSq()>0)direction.normalize().multiplyScalar(speed);
- const radius=0.32;
+ const radius=0.28;
  function canStand(x,z){
   if(x < -19+radius || x > 19-radius || z < -24.8+radius || z > 9.3-radius)return false;
   for(const wall of colliders){
@@ -695,7 +804,9 @@ function animate(){
   keyObject.position.y=1.25+Math.sin(clock.elapsedTime*2)*0.1;
  }
 
- let keyDistance=hasKey?100:camera.position.distanceTo(keyObject.position);
+ const nearDoorway=Math.abs(Math.abs(camera.position.x)-9)<3 && (Math.abs(camera.position.z+4.5)<3.5 || Math.abs(camera.position.z+17.5)<3.5);
+  if(nearDoorway && !hiddenSpot && apparitionState==='idle')document.getElementById('hint').textContent='ODA GİRİŞİ AÇIK — İÇERİ YÜRÜ';
+  let keyDistance=hasKey?100:camera.position.distanceTo(keyObject.position);
  let doorDistance=camera.position.distanceTo(door.position);
 
  const hideButton=document.getElementById('hideButton');
